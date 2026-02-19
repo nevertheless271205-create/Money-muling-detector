@@ -1,4 +1,6 @@
 streamlit
+gunicorn 
 pandas
 networkx
 pyvis
+
