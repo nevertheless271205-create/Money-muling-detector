@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataLens — CSV Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --accent: #7c5cfc;
+    --accent2: #fc5c7d;
+    --accent3: #5cf8d4;
+    --text: #e8e8f0;
+    --muted: #888899;
+    --radius: 12px;
+  }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background mesh */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(124,92,252,0.12) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 80% 80%, rgba(252,92,125,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 50% at 60% 30%, rgba(92,248,212,0.06) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 48px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-mark {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 800;
+    color: white;
+    letter-spacing: -1px;
+  }
+
+  .logo-text {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .logo-text span { color: var(--accent); }
+
+  .status-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 99px;
+    letter-spacing: 0.5px;
+  }
+
+  .status-pill.loaded { color: var(--accent3); border-color: rgba(92,248,212,0.3); }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 32px;
+  }
+
+  .upload-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(124,92,252,0.05), rgba(252,92,125,0.05));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 20px 60px rgba(124,92,252,0.15);
+  }
+
+  .upload-zone:hover::before, .upload-zone.drag-over::before { opacity: 1; }
+
+  .upload-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+  }
+
+  .upload-zone h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: -0.3px;
+  }
+
+  .upload-zone p {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 24px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  input[type="file"] { display: none; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    letter-spacing: 0.2px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #5b3de8);
+    color: white;
+    box-shadow: 0 4px 20px rgba(124,92,252,0.3);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(124,92,252,0.4);
+  }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--accent3);
+    border: 1.5px solid rgba(92,248,212,0.4);
+  }
+
+  .btn-outline:hover {
+    background: rgba(92,248,212,0.08);
+    border-color: var(--accent3);
+    transform: translateY(-2px);
+  }
+
+  /* Main content */
+  #main-content { display: none; animation: fadeUp 0.5s ease forwards; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    transition: transform 0.2s;
+  }
+
+  .stat-card:hover { transform: translateY(-2px); }
+
+  .stat-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -1px;
+  }
+
+  .stat-card:nth-child(1) .stat-value { color: var(--accent); }
+  .stat-card:nth-child(2) .stat-value { color: var(--accent2); }
+  .stat-card:nth-child(3) .stat-value { color: var(--accent3); }
+
+  /* Section */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+
+  .section-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .chart-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.3px;
+  }
+
+  .ctrl-btn:hover, .ctrl-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  select.ctrl-btn {
+    appearance: none;
+    padding-right: 24px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+
+  .chart-body {
+    padding: 24px;
+    position: relative;
+    height: 380px;
+  }
+
+  /* Table */
+  .table-body { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  thead th {
+    padding: 14px 16px;
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(42,42,58,0.6);
+    transition: background 0.15s;
+  }
+
+  tbody tr:hover { background: var(--surface2); }
+
+  tbody td {
+    padding: 12px 16px;
+    color: var(--text);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .table-scroll { max-height: 400px; overflow-y: auto; }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 48px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">
+      <div class="logo-mark">DL</div>
+      <div class="logo-text">Data<span>Lens</span></div>
+    </div>
+    <div class="status-pill" id="status-pill">NO FILE LOADED</div>
+  </header>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="upload-zone">
+    <input type="file" id="csv-input" accept=".csv">
+    <div class="upload-icon">📂</div>
+    <h2>Drop your CSV here</h2>
+    <p>or click to browse your files</p>
+    <button class="btn btn-primary" onclick="document.getElementById('csv-input').click()">
+      ↑ Upload CSV
+    </button>
+  </div>
+
+  <!-- Main content -->
+  <div id="main-content">
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Rows</div>
+        <div class="stat-value" id="stat-rows">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Columns</div>
+        <div class="stat-value" id="stat-cols">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">File Name</div>
+        <div class="stat-value" style="font-size:14px;padding-top:4px;color:var(--accent3)" id="stat-file">—</div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <div class="section-dot" style="background:var(--accent)"></div>
+          Graph Visualization
+        </div>
+        <div class="chart-controls">
+          <button class="ctrl-btn active" onclick="setChartType('bar',this)">Bar</button>
+          <button class="ctrl-btn" onclick="setChartType('line',this)">Line</button>
+          <button class="ctrl-btn" onclick="setChartType('pie',this)">Pie</button>
+          <select class="ctrl-btn" id="x-col" onchange="renderChart()">
+            <option value="">X Axis</option>
+          </select>
+          <select class="ctrl-btn" id="y-col" onchange="renderChart()">
+            <option value="">Y Axis</option>
+          </select>
+        </div>
+      </div>
+      <div class="chart-body">
+        <canvas id="myChart"></canvas>
+        <div class="empty" id="chart-empty">Upload a CSV to see your data visualized</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <div class="section-dot" style="background:var(--accent2)"></div>
+          Table Output
+        </div>
+        <button class="btn btn-outline" id="dl-btn" onclick="downloadJSON()">
+          ↓ Download JSON
+        </button>
+      </div>
+      <div class="table-body">
+        <div class="table-scroll">
+          <table id="data-table">
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let parsedData = [];
+let currentChart = null;
+let currentChartType = 'bar';
+let fileName = '';
+
+// Upload zone interactions
+const zone = document.getElementById('upload-zone');
+const input = document.getElementById('csv-input');
+
+zone.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') input.click(); });
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.csv')) processFile(file);
+});
+input.addEventListener('change', () => { if (input.files[0]) processFile(input.files[0]); });
+
+function processFile(file) {
+  fileName = file.name;
+  const reader = new FileReader();
+  reader.onload = e => parseCSV(e.target.result);
+  reader.readAsText(file);
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return;
+
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  parsedData = lines.slice(1).map(line => {
+    const vals = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || line.split(',');
+    const row = {};
+    headers.forEach((h, i) => {
+      let v = (vals[i] || '').trim().replace(/^"|"$/g, '');
+      row[h] = isNaN(v) || v === '' ? v : Number(v);
+    });
+    return row;
+  });
+
+  renderAll(headers);
+}
+
+function renderAll(headers) {
+  document.getElementById('stat-rows').textContent = parsedData.length;
+  document.getElementById('stat-cols').textContent = headers.length;
+  document.getElementById('stat-file').textContent = fileName;
+
+  const pill = document.getElementById('status-pill');
+  pill.textContent = 'FILE LOADED';
+  pill.className = 'status-pill loaded';
+
+  // Populate selects
+  const xSel = document.getElementById('x-col');
+  const ySel = document.getElementById('y-col');
+  xSel.innerHTML = '<option value="">X Axis</option>';
+  ySel.innerHTML = '<option value="">Y Axis</option>';
+  headers.forEach(h => {
+    xSel.innerHTML += `<option value="${h}">${h}</option>`;
+    ySel.innerHTML += `<option value="${h}">${h}</option>`;
+  });
+
+  // Auto-pick axes
+  const numCols = headers.filter(h => typeof parsedData[0][h] === 'number');
+  const strCols = headers.filter(h => typeof parsedData[0][h] === 'string');
+  if (strCols.length > 0) xSel.value = strCols[0];
+  else if (headers.length > 0) xSel.value = headers[0];
+  if (numCols.length > 0) ySel.value = numCols[0];
+  else if (headers.length > 1) ySel.value = headers[1];
+
+  renderTable(headers);
+  renderChart();
+
+  document.getElementById('main-content').style.display = 'block';
+  zone.style.marginBottom = '16px';
+  zone.style.padding = '24px 40px';
+}
+
+function renderTable(headers) {
+  const thead = document.getElementById('table-head');
+  const tbody = document.getElementById('table-body');
+  thead.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+  tbody.innerHTML = parsedData.slice(0, 200).map(row =>
+    `<tr>${headers.map(h => `<td title="${row[h]}">${row[h]}</td>`).join('')}</tr>`
+  ).join('');
+}
+
+function setChartType(type, btn) {
+  currentChartType = type;
+  document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderChart();
+}
+
+function renderChart() {
+  const xCol = document.getElementById('x-col').value;
+  const yCol = document.getElementById('y-col').value;
+  const empty = document.getElementById('chart-empty');
+
+  if (!xCol || !yCol || parsedData.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const limit = 30;
+  const labels = parsedData.slice(0, limit).map(r => String(r[xCol]).substring(0, 20));
+  const values = parsedData.slice(0, limit).map(r => Number(r[yCol]) || 0);
+
+  const colors = labels.map((_, i) => {
+    const hues = [258, 340, 168, 210, 45, 290, 180];
+    return `hsl(${hues[i % hues.length]}, 80%, 65%)`;
+  });
+
+  if (currentChart) currentChart.destroy();
+
+  const ctx = document.getElementById('myChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: currentChartType,
+    data: {
+      labels,
+      datasets: [{
+        label: yCol,
+        data: values,
+        backgroundColor: currentChartType === 'line' ? 'rgba(124,92,252,0.15)' : colors,
+        borderColor: currentChartType === 'line' ? '#7c5cfc' : colors,
+        borderWidth: currentChartType === 'line' ? 2 : 0,
+        fill: currentChartType === 'line',
+        tension: 0.4,
+        pointBackgroundColor: '#7c5cfc',
+        pointRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#888899', font: { family: 'JetBrains Mono', size: 11 } } },
+        tooltip: {
+          backgroundColor: '#1a1a24',
+          borderColor: '#2a2a3a',
+          borderWidth: 1,
+          titleColor: '#e8e8f0',
+          bodyColor: '#888899',
+          titleFont: { family: 'Syne', size: 13, weight: '700' },
+          bodyFont: { family: 'JetBrains Mono', size: 12 },
+        }
+      },
+      scales: currentChartType === 'pie' ? {} : {
+        x: {
+          ticks: { color: '#666677', font: { family: 'JetBrains Mono', size: 10 }, maxRotation: 45 },
+          grid: { color: 'rgba(42,42,58,0.5)' }
+        },
+        y: {
+          ticks: { color: '#666677', font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: 'rgba(42,42,58,0.5)' }
+        }
+      }
+    }
+  });
+}
+
+function downloadJSON() {
+  if (!parsedData.length) return;
+  const blob = new Blob([JSON.stringify(parsedData, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName.replace('.csv', '') + '.json';
+  a.click();
+}
+</script>
+</body>
+</html>
